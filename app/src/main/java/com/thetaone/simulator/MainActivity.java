@@ -1,11 +1,9 @@
 package com.thetaone.simulator;
 
-import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
 import android.bluetooth.BluetoothGattCharacteristic;
-import android.bluetooth.BluetoothGattDescriptor;
 import android.bluetooth.BluetoothGattServer;
 import android.bluetooth.BluetoothGattServerCallback;
 import android.bluetooth.BluetoothManager;
@@ -22,17 +20,11 @@ import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.ParcelUuid;
 import android.support.v7.app.AppCompatActivity;
-import android.text.format.DateFormat;
 import android.util.Log;
+import android.view.View;
 import android.view.WindowManager;
-import android.widget.TextView;
+import android.widget.Button;
 
-import java.util.Arrays;
-import java.util.Date;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.Timer;
-import java.util.TimerTask;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = MainActivity.class.getSimpleName();
@@ -41,14 +33,19 @@ public class MainActivity extends AppCompatActivity {
     private BluetoothManager mBluetoothManager;
     private BluetoothGattServer mBluetoothGattServer;
     private BluetoothLeAdvertiser mBluetoothLeAdvertiser;
-    private BluetoothGattCharacteristic mainCharacteristic;
-    /* Collection of notification subscribers */
-    private Set<BluetoothDevice> mRegisteredDevices = new HashSet<>();
+
+    private Button mButton;
+
+    public boolean isServerRunning = false;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+
+        mButton = findViewById(R.id.button);
 
         // Devices with a display should not go to sleep
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -73,22 +70,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    @Override
-    protected void onStart() {
-        super.onStart();
-        // Register for system clock events
-        IntentFilter filter = new IntentFilter();
-        filter.addAction(Intent.ACTION_TIME_TICK);
-        filter.addAction(Intent.ACTION_TIME_CHANGED);
-        filter.addAction(Intent.ACTION_TIMEZONE_CHANGED);
 
-    }
-
-    @Override
-    protected void onStop() {
-        super.onStop();
-
-    }
 
     @Override
     protected void onDestroy() {
@@ -102,6 +84,23 @@ public class MainActivity extends AppCompatActivity {
 
         unregisterReceiver(mBluetoothReceiver);
     }
+
+
+    void startStopServer(View view){
+        if(isServerRunning){
+            Log.d(TAG, "Stopping GATT Server");
+            mButton.setText("Start Server");
+            stopServer();
+        } else {
+            Log.d(TAG, "Starting GATT Server");
+            mButton.setText("Stop Server");
+            startServer();
+        }
+    }
+
+
+
+
 
     /**
      * Verify the level of Bluetooth support provided by the hardware.
@@ -152,7 +151,7 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * Begin advertising over Bluetooth that this device is connectable
-     * and supports the Current Time Service.
+     * and supports the Custom Watch Service.
      */
     private void startAdvertising() {
         BluetoothAdapter bluetoothAdapter = mBluetoothManager.getAdapter();
@@ -189,20 +188,19 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Initialize the GATT server instance with the services/characteristics
-     * from the Time Profile.
+     * Initialize the GATT server instance with the Custom Watch Service
+     * and two custom Characteristics - MEASURE_NOW & CALIBRATE_NOW
      */
     private void startServer() {
         mBluetoothGattServer = mBluetoothManager.openGattServer(this, mGattServerCallback);
         if (mBluetoothGattServer == null) {
             Log.w(TAG, "Unable to create GATT server");
+            isServerRunning = false;
             return;
         }
 
         mBluetoothGattServer.addService(WatchProfile.createWatchService());
-
-        // Initialize the local UI
-        updateLocalUi(System.currentTimeMillis());
+        isServerRunning = true;
     }
 
     /**
@@ -212,6 +210,7 @@ public class MainActivity extends AppCompatActivity {
         if (mBluetoothGattServer == null) return;
 
         mBluetoothGattServer.close();
+        isServerRunning = false;
     }
 
     /**
@@ -229,37 +228,10 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
-    /**
-     * Send a time service notification to any devices that are subscribed
-     * to the characteristic.
-     */
-    private void notifyRegisteredDevices(long timestamp, byte adjustReason) {
-        if (mRegisteredDevices.isEmpty()) {
-            Log.i(TAG, "No subscribers registered");
-            return;
-        }
-        byte[] respBytes = WatchProfile.measureNowResponse();
-
-        Log.i(TAG, "Sending update to " + mRegisteredDevices.size() + " subscribers");
-        for (BluetoothDevice device : mRegisteredDevices) {
-            mainCharacteristic = mBluetoothGattServer
-                    .getService(WatchProfile.WATCH_SERVICE_UUID)
-                    .getCharacteristic(WatchProfile.MEASURE_NOW_UUID);
-            mainCharacteristic.setValue(respBytes);
-            mBluetoothGattServer.notifyCharacteristicChanged(device, mainCharacteristic, false);
-        }
-    }
-
-    /**
-     * Update graphical UI on devices that support it with the current time.
-     */
-    private void updateLocalUi(long timestamp) {
-
-    }
 
     /**
      * Callback to handle incoming requests to the GATT server.
-     * All read/write requests for characteristics and descriptors are handled here.
+     * All read/write requests for characteristics are handled here.
      */
     private BluetoothGattServerCallback mGattServerCallback = new BluetoothGattServerCallback() {
 
@@ -269,15 +241,14 @@ public class MainActivity extends AppCompatActivity {
                 Log.i(TAG, "BluetoothDevice CONNECTED: " + device);
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 Log.i(TAG, "BluetoothDevice DISCONNECTED: " + device);
-                //Remove device from any active subscriptions
-                mRegisteredDevices.remove(device);
             }
         }
 
         @Override
-        public void onCharacteristicReadRequest(BluetoothDevice device, int requestId, int offset,
+        public void onCharacteristicReadRequest(BluetoothDevice device,
+                                                int requestId,
+                                                int offset,
                                                 BluetoothGattCharacteristic characteristic) {
-            long now = System.currentTimeMillis();
             if (WatchProfile.MEASURE_NOW_UUID.equals(characteristic.getUuid())) {
                 Log.i(TAG, "Read MeasureNow");
                 mBluetoothGattServer.sendResponse(device,
@@ -287,17 +258,12 @@ public class MainActivity extends AppCompatActivity {
                         WatchProfile.measureNowResponse());
             } else if (WatchProfile.CAL_NOW_UUID.equals(characteristic.getUuid())) {
                 Log.i(TAG, "Read CalibrateNow");
-//                byte[] returnArray = WatchProfile.calNowResponse();
-////                for(byte b: returnArray){
-////                    System.out.println(b);
-////                }
-//
                 mBluetoothGattServer.sendResponse(device,
                         requestId,
                         BluetoothGatt.GATT_SUCCESS,
                         0,new byte[]{0}
                         );
-                CalibrationWorker calibrationWorker = new CalibrationWorker(mBluetoothGattServer,device,requestId,BluetoothGatt.GATT_SUCCESS,0,characteristic);
+                CalibrationWorker calibrationWorker = new CalibrationWorker(mBluetoothGattServer, device, characteristic);
                 calibrationWorker.start();
 
             } else {
@@ -310,66 +276,6 @@ public class MainActivity extends AppCompatActivity {
                         null);
             }
         }
-
-        @Override
-        public void onDescriptorReadRequest(BluetoothDevice device, int requestId, int offset,
-                                            BluetoothGattDescriptor descriptor) {
-            if (WatchProfile.CLIENT_CONFIG.equals(descriptor.getUuid())) {
-                Log.d(TAG, "Config descriptor read");
-                byte[] returnValue;
-                if (mRegisteredDevices.contains(device)) {
-                    returnValue = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE;
-                } else {
-                    returnValue = BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE;
-                }
-                mBluetoothGattServer.sendResponse(device,
-                        requestId,
-                        BluetoothGatt.GATT_FAILURE,
-                        0,
-                        returnValue);
-            } else {
-                Log.w(TAG, "Unknown descriptor read request");
-                mBluetoothGattServer.sendResponse(device,
-                        requestId,
-                        BluetoothGatt.GATT_FAILURE,
-                        0,
-                        null);
-            }
-        }
-
-        @Override
-        public void onDescriptorWriteRequest(BluetoothDevice device, int requestId,
-                                             BluetoothGattDescriptor descriptor,
-                                             boolean preparedWrite, boolean responseNeeded,
-                                             int offset, byte[] value) {
-            if (WatchProfile.CLIENT_CONFIG.equals(descriptor.getUuid())) {
-                if (Arrays.equals(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE, value)) {
-                    Log.d(TAG, "Subscribe device to notifications: " + device);
-                    mRegisteredDevices.add(device);
-                } else if (Arrays.equals(BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE, value)) {
-                    Log.d(TAG, "Unsubscribe device from notifications: " + device);
-                    mRegisteredDevices.remove(device);
-                }
-
-                if (responseNeeded) {
-                    mBluetoothGattServer.sendResponse(device,
-                            requestId,
-                            BluetoothGatt.GATT_SUCCESS,
-                            0,
-                            null);
-                }
-            } else {
-                Log.w(TAG, "Unknown descriptor write request");
-                if (responseNeeded) {
-                    mBluetoothGattServer.sendResponse(device,
-                            requestId,
-                            BluetoothGatt.GATT_FAILURE,
-                            0,
-                            null);
-                }
-            }
-        }
-
     };
 
 }

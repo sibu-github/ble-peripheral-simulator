@@ -8,12 +8,12 @@ public class CalibrationWorker extends Thread {
     BluetoothGattServer mBluetoothGattServer;
     BluetoothDevice device;
     BluetoothGattCharacteristic characteristic;
-    int requestId, responseCode, offset;
-    CalibrationWorker(BluetoothGattServer mBluetoothGattServer,BluetoothDevice device,int requestId,int responseCode,int offset,BluetoothGattCharacteristic characteristic){
+
+
+    CalibrationWorker(BluetoothGattServer mBluetoothGattServer,
+                      BluetoothDevice device,
+                      BluetoothGattCharacteristic characteristic){
         this.mBluetoothGattServer = mBluetoothGattServer;
-        this.requestId = requestId;
-        this.responseCode = responseCode;
-        this.offset = offset;
         this.device= device;
         this.characteristic = characteristic;
     }
@@ -21,15 +21,21 @@ public class CalibrationWorker extends Thread {
     @Override
     public void run() {
         super.run();
-        for(int i=0;i<26*60;i++){
-            byte[] data = WatchProfile.measureNowResponse();
+        for(int i=0; i< 26*60; i++){
+            byte[] data = WatchProfile.calNowResponse();
             characteristic.setValue(data);
-//        boolean flag = mBluetoothGattServer.sendResponse(device,requestId,responseCode,offset,data);
             boolean flag = mBluetoothGattServer.notifyCharacteristicChanged(device,characteristic,true);
             if(flag)
                 System.out.println("Calibration sent");
             else
                 System.out.println("Calibration not sent");
+
+
+            try{
+                Thread.sleep(60000/(26 * 60));
+            } catch (InterruptedException e){
+                e.printStackTrace();
+            }
         }
 
     }
