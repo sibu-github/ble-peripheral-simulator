@@ -1,4 +1,4 @@
-package com.thetaone.lifeplusbltest;
+package com.thetaone.simulator;
 
 import android.content.Context;
 import android.support.test.InstrumentationRegistry;
@@ -21,6 +21,6 @@ public class ExampleInstrumentedTest {
         // Context of the app under test.
         Context appContext = InstrumentationRegistry.getTargetContext();
 
-        assertEquals("com.thetaone.lifeplusbltest", appContext.getPackageName());
+        assertEquals("com.thetaone.simulator", appContext.getPackageName());
     }
 }

@@ -1,4 +1,4 @@
-package com.thetaone.lifeplusbltest;
+package com.thetaone.simulator;
 
 import org.junit.Test;
 
